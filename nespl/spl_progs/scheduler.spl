@@ -1,0 +1,112 @@
+alias pid R0;
+pid = [SYSTEM_STATUS_TABLE + CORE * 5 + 1];
+
+multipush (BP);
+
+// calling acquire SCHED_LOCK
+R1 = 2;
+
+call MOD_8;
+
+
+
+[PROCESS_TABLE + pid * 16 + 12] = SP % 512;
+[PROCESS_TABLE + pid * 16 + 14] = PTBR;
+[PROCESS_TABLE + pid * 16 + 15] = PTLR;
+
+alias newpid R1;
+
+alias temp R2;
+
+temp = pid + 1;
+
+
+// Checking for CORE paging status and scheduling accordingly
+
+if (CORE == 0) then
+	if ([SYSTEM_STATUS_TABLE + 7] == 1 && [SYSTEM_STATUS_TABLE + 6] != 14) then
+		newpid = 0;
+	else
+		if ([SYSTEM_STATUS_TABLE + 5] != 0) then // paging status
+			if ([PROCESS_TABLE + 15 * 16 + 4] != CREATED || [PROCESS_TABLE + 15 * 16 + 4] != READY) then
+				newpid = 0;
+			else
+				newpid = 15;
+			endif;
+		else
+			while (temp < 14) do
+				if (([PROCESS_TABLE + temp * 16 + 4] == CREATED || [PROCESS_TABLE + temp * 16 + 4] == READY) && [PROCESS_TABLE + temp * 16 + 6] != 1 && temp != [SYSTEM_STATUS_TABLE + 6]) then
+					newpid = temp;
+					break;
+				endif;
+				temp = temp + 1;
+			endwhile;
+
+			if (temp == 14) then 
+				newpid = 0;
+			endif;
+		endif;
+	endif;
+else
+	if ([SYSTEM_STATUS_TABLE + 5] != 0) then
+		newpid = 14;
+	else
+		while (temp < 15) do
+			if (([PROCESS_TABLE + temp * 16 + 4] == CREATED || [PROCESS_TABLE + temp * 16 + 4] == READY) && [PROCESS_TABLE + temp * 16 + 6] != 1 && temp != [SYSTEM_STATUS_TABLE + 1]) then
+				newpid = temp;
+				break;
+			endif;
+			temp = temp + 1;
+		endwhile;
+
+		temp = 3;
+		while (temp < 15) do
+			if (([PROCESS_TABLE + temp * 16 + 4] == CREATED || [PROCESS_TABLE + temp * 16 + 4] == READY) && [PROCESS_TABLE + temp * 16 + 6] != 1 && temp != [SYSTEM_STATUS_TABLE + 1]) then
+				newpid = temp;
+				break;
+			endif;
+			temp = temp + 1;
+		endwhile;
+
+		if (temp == 15) then 
+			newpid = 14;
+		endif;
+	endif;
+endif;
+
+
+
+// breakpoint;
+alias new_process_table R3;
+
+new_process_table = PROCESS_TABLE + newpid * 16;
+
+SP = [new_process_table + 11] * 512 + [new_process_table + 12];
+PTBR = [new_process_table + 14];
+PTLR = [new_process_table + 15];
+[SYSTEM_STATUS_TABLE + CORE * 5 + 1] = newpid;
+
+if ([new_process_table + 4] == CREATED) then
+	multipush(R1,R2,R3);
+	R1 = 4;
+	R2 = SCHED_LOCK;
+
+	call MOD_8;
+	multipop(R1,R2,R3);
+	BP = [SP];
+	SP = [new_process_table + 13];
+	[new_process_table + 4] = RUNNING;
+	[new_process_table + 9] = 0;
+	ireturn;
+endif;
+
+
+multipush(R1,R2,R3);
+R1 = 4;
+R2 = SCHED_LOCK;
+
+call MOD_8;
+multipop(R1,R2,R3);
+multipop (BP);
+[PROCESS_TABLE + newpid * 16 + 4] = RUNNING;
+return;

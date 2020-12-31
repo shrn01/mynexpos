@@ -1,0 +1,188 @@
+// EXEC system_call
+
+
+// print "EXEC CALL";
+
+alias pid R11;
+pid = [SYSTEM_STATUS_TABLE + CORE * 5 + 1];
+
+
+// setting mode
+[PROCESS_TABLE + pid * 16 + 9 ] = 9;
+
+
+alias userSP R7;
+userSP = SP;
+
+
+[PROCESS_TABLE + pid * 16 + 13] = SP;
+SP = [PROCESS_TABLE + pid * 16 + 11] * 512 - 1;
+
+alias fileName R1;
+
+fileName = [[PTBR + 2 * (userSP - 4)/512] * 512 + (userSP - 4) % 512];  //pagenum * 512 + offset
+
+
+backup;
+R1 = 1;
+
+call MOD_8;
+restore;
+
+alias i R2;
+i = 0;
+
+while ( i < 60 ) do
+    if ([INODE_TABLE + i * 16 + 1] == fileName) then
+        if ([INODE_TABLE + i * 16] == 3) then
+            break;
+        endif;
+    endif;
+    i = i + 1;
+endwhile;
+
+
+alias returnAddress R3;
+
+if ( i == 60) then
+    returnAddress = [PTBR + 2 * (userSP - 1)/512] * 512 + (userSP - 1) % 512;  //pagenum * 512 + offset
+    [returnAddress] = -1;
+        
+    backup;
+    R1 = 4;
+    R2 = KERN_LOCK;
+
+    call MOD_8;
+    restore;
+
+    [PROCESS_TABLE + pid * 16 + 9 ] = 0;
+    SP = userSP;
+    ireturn;
+endif;
+
+backup;
+
+R1 = 3;
+R2 = pid;
+
+call MOD_1;
+
+restore;
+
+
+
+//reducing the number of free pages
+[SYSTEM_STATUS_TABLE + 2] = [SYSTEM_STATUS_TABLE + 2] - 1; 
+
+//updating memory free list
+[MEMORY_FREE_LIST + [PROCESS_TABLE + pid * 16 + 11]] = [MEMORY_FREE_LIST + [PROCESS_TABLE + pid * 16 + 11]] + 1;
+
+
+SP = [PROCESS_TABLE + pid * 16 + 11] * 512 - 1;
+
+
+
+// starting the new process with old pid
+[PROCESS_TABLE + pid * 16 + 4] = RUNNING;
+[PROCESS_TABLE + pid * 16 + 7] = i;
+
+
+
+
+
+
+PTBR = PAGE_TABLE_BASE + pid * 20;
+PTLR = 10;
+
+//library
+[PTBR+0] = 63;
+[PTBR+1] = "0100";
+[PTBR+2] = 64;
+[PTBR+3] = "0100";
+
+
+
+// heap
+[PTBR+4] = -1;
+[PTBR+5] = "0000";
+[PTBR+6] = -1;
+[PTBR+7] = "0000";
+
+
+
+
+//code
+[PTBR+8] = -1;
+[PTBR+9] = "0000";
+[PTBR+10] = -1;
+[PTBR+11] = "0000";
+[PTBR+12] = -1;
+[PTBR+13] = "0000";
+[PTBR+14] = -1;
+[PTBR+15] = "0000";
+
+
+
+backup;
+//stack
+
+R1 = 1;
+call MOD_2;
+[PTBR+16] = R0;
+[PTBR+17] = "0110";
+
+R1 = 1;
+call MOD_2;
+[PTBR+18] = R0;
+[PTBR+19] = "0110";
+
+
+restore;
+
+// print "1 and here";
+if ([INODE_TABLE + [PROCESS_TABLE + pid * 16 + 7] * 16 + 8] != -1) then
+    backup; 
+    R1 = 5;
+    R2 = [INODE_TABLE + [PROCESS_TABLE + pid * 16 + 7] * 16 + 8];
+    R3 = pid;
+    call MOD_2;
+    [PTBR + 8] = R0;
+    [PTBR + 9] = "0100";
+    restore;
+else
+    print "Code page Not Found";
+endif;
+
+multipush(R1);
+R1 = 0;
+
+while (R1 < 10) do
+    [DISK_MAP_TABLE + pid * 10 + R1] = -1;
+    R1 = R1 + 1;
+endwhile;
+
+multipop(R1);
+
+[DISK_MAP_TABLE + pid * 10 + 4] = [INODE_TABLE + [PROCESS_TABLE + pid * 16 + 7] * 16 + 8];
+[DISK_MAP_TABLE + pid * 10 + 5] = [INODE_TABLE + [PROCESS_TABLE + pid * 16 + 7] * 16 + 9];
+[DISK_MAP_TABLE + pid * 10 + 6] = [INODE_TABLE + [PROCESS_TABLE + pid * 16 + 7] * 16 + 10];
+[DISK_MAP_TABLE + pid * 10 + 7] = [INODE_TABLE + [PROCESS_TABLE + pid * 16 + 7] * 16 + 11];
+
+// print "ended successfully";
+// print "PTBR";
+// print PTBR;
+[[PTBR + 16] * 512] = [[PTBR+8] * 512 + 1];
+
+
+backup;
+R1 = 4;
+R2 = KERN_LOCK;
+
+call MOD_8;
+restore;
+
+
+SP = 8 * 512;
+
+[PROCESS_TABLE + pid * 16 + 9] = 0; // setting mode to user
+ireturn;

@@ -1,0 +1,36 @@
+// Access control module
+
+// Acquire kern lock
+if (R1 == 1) then
+    return;
+    if (CORE == 1) then
+        if ([SYSTEM_STATUS_TABLE + 5] != 0 || [SYSTEM_STATUS_TABLE + 7] != 0) then
+            breakpoint;
+            [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + CORE * 5 + 1] + 4] = READY;
+
+            backup;
+            call MOD_5;
+            restore;
+        endif;
+    endif;
+
+    while (tsl(KERN_LOCK) == 1) do
+        continue;
+    endwhile;
+    return;
+endif;
+
+// acquire sched lock
+if (R1 == 2) then
+    breakpoint;
+    while(tsl(SCHED_LOCK) == 1) do
+        continue;
+    endwhile;
+    return;
+endif;
+
+//release lock
+if (R1 == 4) then
+    [R2] = 0;
+    return;
+endif;

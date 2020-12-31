@@ -1,0 +1,104 @@
+// Setting UPTR to SP
+[PROCESS_TABLE + ([SYSTEM_STATUS_TABLE + 5 * CORE + 1]*16) + 13] = SP;
+
+// setting SP to kernel stack
+SP = [PROCESS_TABLE + ([SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 16) + 11] * 512 - 1;
+
+backup;
+// print "In timer";
+
+alias currentPID R0;
+alias process_table_entry R1;
+alias swapbit R2;
+alias i R3;
+alias pt R4;
+
+swapbit = [SYSTEM_STATUS_TABLE + 5];
+
+// swapping is initialised
+if (swapbit != 0) then
+    if (CORE == 0) then
+        if ((currentPID == 15) && (swapbit == 1)) then
+            backup;
+            R1 = 1;
+
+            call MOD_8;
+            restore;
+            backup;
+            R1 = 1;
+            R2 = 15;
+
+            call MOD_6;
+            restore;
+            backup;
+            R1 = 4;
+            R2 = KERN_LOCK;
+
+            call MOD_8;
+            restore;
+        else
+            if ((currentPID == 15) && (swapbit == 2)) then
+                backup;
+                R1 = 1;
+
+                call MOD_8;
+                restore;
+                backup;
+                R1 = 2;
+                R2 = 15;
+
+                call MOD_6;
+                restore;
+                
+                backup;
+                R1 = 4;
+                R2 = KERN_LOCK;
+
+                call MOD_8;
+                restore;
+            endif;
+        endif;
+    endif;
+else
+    if ([SYSTEM_STATUS_TABLE + 2] < 4) then
+        [SYSTEM_STATUS_TABLE + 5] = 1;
+    else
+        i = 3;
+        while (i < 15) do
+            pt = PROCESS_TABLE + i * 16;
+            if ([pt + 4] != TERMINATED && [pt] > MAX_TICK && [pt + 6] == 1) then
+                break;
+            endif;
+            i = i + 1;
+        endwhile;
+
+        if ([SYSTEM_STATUS_TABLE + 4] != 0 && ([SYSTEM_STATUS_TABLE + 2] > 12 || i != 15)) then
+            [SYSTEM_STATUS_TABLE + 5] = 2;
+        endif;
+    endif;
+endif;
+
+
+currentPID = [SYSTEM_STATUS_TABLE + 5 * CORE + 1];
+
+process_table_entry = PROCESS_TABLE + currentPID*16;
+
+[process_table_entry + 12] = SP % 512;
+[process_table_entry + 14] = PTBR;
+[process_table_entry + 15] = PTLR;
+[process_table_entry + 4] = READY;
+
+i = 3;
+while (i < 15) do
+    pt = PROCESS_TABLE + i * 16;
+    if ([pt + 4] != TERMINATED) then
+        [pt] = [pt] + 1;
+    endif;
+    i = i + 1;
+endwhile;
+
+call MOD_5;
+restore;
+
+SP = [PROCESS_TABLE + ( [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 16) + 13];
+ireturn;

@@ -1,0 +1,14 @@
+
+backup;
+R1 = 1;
+
+call MOD_8;
+restore;
+
+
+backup;
+R1 = 4;
+R2 = KERN_LOCK;
+
+call MOD_8;
+restore;

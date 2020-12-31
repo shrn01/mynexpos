@@ -1,0 +1,51 @@
+// print "in int10";
+
+
+alias pid R11;
+pid = [SYSTEM_STATUS_TABLE + CORE * 5 + 1];
+
+
+// setting mode
+[PROCESS_TABLE + pid * 16 + 9] = 10;
+
+
+// switching to kernel stack
+[PROCESS_TABLE + pid * 16 + 13] = SP;
+SP = [PROCESS_TABLE + pid * 16 + 11] * 512 - 1;
+
+
+backup;
+R1 = 1;
+
+call MOD_8;
+restore;
+
+
+multipush(R0,R1,R2);
+R1 = 3;
+R2 = pid;
+call MOD_1;
+multipop(R0,R1,R2);
+
+
+backup;
+R1 = 4;
+R2 = KERN_LOCK;
+
+call MOD_8;
+restore;
+
+
+
+[PROCESS_TABLE + pid * 16 + 4] = TERMINATED;
+breakpoint;
+
+
+R0 = 1;
+while (R0 < 14) do
+	if ([PROCESS_TABLE + R0 * 16 + 4] != TERMINATED) then
+		call MOD_5;
+	endif;
+	R0 = R0 + 1;
+endwhile;
+halt;

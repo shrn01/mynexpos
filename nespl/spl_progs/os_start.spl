@@ -1,0 +1,127 @@
+// print "Starting OS";
+//loading idle
+loadi(69,11);
+
+//loading boot module (MOD 7)
+loadi(54,67);
+loadi(55,68);
+
+// loading secondary bootstrap loader
+loadi(128,512);
+
+//loading access control module
+loadi(132,516);
+loadi(133,517);
+
+
+// Setting all processes to TERMINATED
+alias index R0;
+index = 0;
+while ( index < 16 ) do
+	[PROCESS_TABLE + ( 16 * index )] = 0;
+	[PROCESS_TABLE + ( 16 * index ) + 4] = TERMINATED;
+	index = index + 1;
+endwhile;
+
+
+
+SP = 76 * 512 - 1;
+call BOOT_MODULE;
+
+[PROCESS_TABLE] = 0;
+[PROCESS_TABLE + 1] = 0;
+[PROCESS_TABLE + 3] = 0;
+[PROCESS_TABLE + 4] = RUNNING;
+[PROCESS_TABLE + 11] = 76;
+[PROCESS_TABLE + 12] = 0;
+[PROCESS_TABLE + 13] = 8 * 512;
+[PROCESS_TABLE + 14] = PAGE_TABLE_BASE;
+[PROCESS_TABLE + 15] = 10;
+
+//idle
+PTBR = PAGE_TABLE_BASE;
+
+index = 0;
+while (index < 20) do
+	[PTBR + index] = -1;
+	[PTBR + index + 1] = "0000";
+	index = index + 2;
+endwhile;
+
+
+[PTBR + 0] = 63;
+[PTBR + 1] = "0100";
+[PTBR + 2] = 64;
+[PTBR + 3] = "0100";
+
+[PTBR + 8] = 69;
+[PTBR + 9] = "0100";
+
+[PTBR + 16] = 70;
+[PTBR + 17] = "0110";
+
+
+[70 * 512] = [69 * 512 + 1];
+
+
+// swapper
+
+alias ptbr R2;
+alias Process_table R3;
+alias ptbr2 R4;
+alias Process_table2 R5;
+
+ptbr = PAGE_TABLE_BASE + 15 * 20;
+Process_table = PROCESS_TABLE + 15 * 16;
+
+ptbr2 = ptbr - 20;
+Process_table2 = Process_table - 16;
+
+index = 0;
+while (index < 16) do
+	[ptbr + index] = [PTBR + index];
+	[Process_table + index] = [PROCESS_TABLE + index];
+	
+	[ptbr2 + index] = [PTBR + index];
+	[Process_table2 + index] = [PROCESS_TABLE + index];
+	index = index + 1;
+endwhile;
+
+[ptbr + 16] = 81;
+[ptbr + 17] = "0110";
+[ptbr + 18] = -1;
+[ptbr + 19] = "0000";
+
+
+[Process_table + 1] = 15;
+[Process_table + 4] = CREATED;
+[Process_table + 11] = 82;
+
+
+[ptbr2 + 16] = 83;
+[ptbr2 + 17] = "0110";
+[ptbr2 + 18] = -1;
+[ptbr2 + 19] = "0000";
+
+
+[Process_table2 + 1] = 14;
+[Process_table2 + 11] = 84;
+
+[81 * 512] = [69 * 512 + 1];
+
+SP = 8 * 512;
+
+// setting up currentpid, currentpid2, logout status
+[SYSTEM_STATUS_TABLE + 1] = 0;
+[SYSTEM_STATUS_TABLE + 6] = 14;
+[SYSTEM_STATUS_TABLE + 7] = 0;
+
+// setting up access lock table
+[KERN_LOCK] = 0;
+[SCHED_LOCK] = 0;
+
+[MEMORY_FREE_LIST + 69] = 3;
+start;
+
+breakpoint;
+ireturn;

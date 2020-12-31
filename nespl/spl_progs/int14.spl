@@ -1,0 +1,150 @@
+// int 14 with semlock and semunlock
+
+
+
+alias userSP R5;
+userSP = SP;
+
+alias pid R11;
+pid = [SYSTEM_STATUS_TABLE + CORE * 5 + 1];
+
+
+[PROCESS_TABLE + ( pid * 16) + 13] = SP;
+SP = [PROCESS_TABLE + pid * 16 + 11] * 512 - 1;
+
+
+
+alias system_call_number R4;
+
+system_call_number = [[PTBR + 2 * ((userSP - 5) / 512)] * 512 + (userSP - 5) % 512];
+[PROCESS_TABLE + pid * 16 + 9 ] = system_call_number;
+
+
+alias RETURN R2;
+RETURN = [PTBR + 2 * ((userSP - 1) / 512)] * 512 + (userSP - 1) % 512;
+
+// semlock
+if (system_call_number == 19) then
+    alias userpage R7;
+    alias semid R6;
+    alias semindex R8;
+
+    userpage = [PROCESS_TABLE + pid * 16 + 11];
+    semid = [[PTBR + 2 * ((userSP - 4) / 512)] * 512 + (userSP - 4) % 512];
+
+    if ([userpage * 512 + RESOURCE_TABLE_OFFSET + semid * 2] != 1 || semid < 0 || semid > 7) then
+        [RETURN] = -1;
+        [PROCESS_TABLE + pid * 16 + 9] = 0;
+        SP = [PROCESS_TABLE + pid * 16 + 13];
+        ireturn;
+    endif;
+
+    backup;
+    R1 = 1;
+
+    call MOD_8;
+    restore;
+
+    semindex = [userpage * 512 + RESOURCE_TABLE_OFFSET + semid * 2 + 1];
+    while ([SEMAPHORE_TABLE + semindex * 4] !=  pid && [SEMAPHORE_TABLE + semindex * 4] !=  -1) do
+        [PROCESS_TABLE + pid * 16 + 4] = WAIT_SEMAPHORE;
+        [PROCESS_TABLE + pid * 16 + 5] = semindex;
+
+        backup;
+        R1 = 4;
+        R2 = KERN_LOCK;
+
+        call MOD_8;
+        restore;
+
+        backup;
+        call MOD_5;
+        restore;
+        
+        backup;
+        R1 = 1;
+
+        call MOD_8;
+        restore;
+
+    endwhile;
+
+    [SEMAPHORE_TABLE + semindex * 4] = pid;
+
+    backup;
+    R1 = 4;
+    R2 = KERN_LOCK;
+
+    call MOD_8;
+    restore;
+
+
+    [PROCESS_TABLE + pid * 16 + 9 ] = 0;
+    SP = userSP;
+    [RETURN] = 0;
+    ireturn;
+endif;
+
+
+// semunlock
+if (system_call_number == 20) then
+    alias userpage R7;
+    alias semid R6;
+    alias semindex R8;
+
+    userpage = [PROCESS_TABLE + pid * 16 + 11];
+    semid = [[PTBR + 2 * ((userSP - 4) / 512)] * 512 + (userSP - 4) % 512];
+
+    if ([userpage * 512 + RESOURCE_TABLE_OFFSET + semid * 2] != 1 || semid < 0 || semid > 7) then
+        [RETURN] = -1;
+        [PROCESS_TABLE + pid * 16 + 9] = 0;
+        SP = [PROCESS_TABLE + pid * 16 + 13];
+        ireturn;
+    endif;
+
+    backup;
+    R1 = 1;
+
+    call MOD_8;
+    restore;
+    
+    semindex = [userpage * 512 + RESOURCE_TABLE_OFFSET + semid * 2 + 1];
+
+    if ([SEMAPHORE_TABLE + semindex * 4] !=  -1) then
+        if ([SEMAPHORE_TABLE + semindex * 4] !=  pid) then
+            [RETURN] = -2;
+            [PROCESS_TABLE + pid * 16 + 9] = 0;
+            SP = [PROCESS_TABLE + pid * 16 + 13];
+            ireturn;
+        endif;
+
+        [SEMAPHORE_TABLE + semindex * 4] = -1;
+
+        multipush(R4);
+        R4 = 0;
+        while (R4 < 16) do
+            if ([PROCESS_TABLE + R4 * 16 + 4] == WAIT_SEMAPHORE && [PROCESS_TABLE + R4 * 16 + 5] == semindex) then
+                [PROCESS_TABLE + R4 * 16 + 4] = READY;
+            endif;
+            R4 = R4 + 1;
+        endwhile;
+        multipop(R4);
+
+    endif;
+
+    backup;
+    R1 = 4;
+    R2 = KERN_LOCK;
+
+    call MOD_8;
+    restore;
+
+
+    [RETURN] = 0;
+    [PROCESS_TABLE + pid * 16 + 9] = 0;
+
+    SP = [PROCESS_TABLE + pid * 16 + 13];
+    ireturn;
+    
+endif;
+

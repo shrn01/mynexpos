@@ -1,0 +1,111 @@
+// Exception Handler Module
+
+// EC => Cause ; 
+// EIP => Instruction causing the error ; 
+// EPN => Page causing the error ; 
+// EMA => Memory address in which Illegal memory access is done ;
+
+// Page fault:             EC => 0
+// Illegal instructions:   EC => 1
+// Illegal Memory Access:  EC => 2
+// Arithmetic exception:   EC => 3
+
+
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 16 + 9] = -1;
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 16 + 13] = SP;
+SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 16 + 11] * 512 - 1;
+
+backup;
+multipush(EIP);
+
+if (EC != 0) then
+    if (EC == 1) then
+        print "--ILLEGAL--";
+        print "--INSTRUC--";
+        print EIP;
+        print " ";
+        breakpoint;
+    endif;
+    if (EC == 2) then
+        print "--ILLEGAL--";
+        print "--MEM ACS--";
+        print EMA;
+        print " ";
+        breakpoint;
+    endif;
+    if (EC == 3) then
+        print "DVIDE / 0";
+        print " ";
+        breakpoint;
+    endif;
+
+    R1 = 3;
+    R2 = [SYSTEM_STATUS_TABLE + 5 * CORE + 1];
+    call MOD_1;
+    call MOD_5;
+endif;
+
+if (SP == 10 * 512 - 1) then
+    print "--STACK--";
+    print "---FULL---";
+    breakpoint;
+    R1 = 3;
+    R2 = [SYSTEM_STATUS_TABLE + 5 * CORE + 1];
+    call MOD_1;
+    call MOD_5;
+endif;
+
+if (EC == 0) then
+    backup;
+    R1 = 1;
+
+    call MOD_8;
+    restore;
+    alias block R5;
+    block = [DISK_MAP_TABLE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 10 + EPN];
+    if (EPN == 4 || EPN == 5 || EPN == 6 || EPN == 7) then
+        //need to Load the code Page
+        multipush(EPN);
+        R1 = 5;
+        R2 = block;
+        call MOD_2;
+        multipop(EPN);
+        // print R0;
+        [PAGE_TABLE_BASE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 20 + EPN * 2] = R0;
+        [PAGE_TABLE_BASE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 20 + EPN * 2 + 1] = "1100"; 
+    endif;
+
+    if (EPN == 2 || EPN == 3) then
+        R1 = 1;
+        call MOD_2;
+        [PAGE_TABLE_BASE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 20 + 4] = R0;
+        [PAGE_TABLE_BASE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 20 + 5] = "1110";
+
+        R1 = 1;
+        call MOD_2;
+        [PAGE_TABLE_BASE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 20 + 6] = R0;
+        [PAGE_TABLE_BASE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 20 + 7] = "1110";
+
+    endif;
+
+    [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 16 + 9] = 0;
+    multipop(EIP);
+    restore;
+
+    multipush(R1,R2);
+    R1 = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 16 + 13] + 1;
+    R2 = [PAGE_TABLE_BASE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 20 + 2 * (R1 / 512)] * 512 + R1 % 512;
+    [R2] = EIP;
+    multipop(R1,R2);
+
+    
+    backup;
+    R1 = 4;
+    R2 = KERN_LOCK;
+
+    call MOD_8;
+    restore;
+    SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 5 * CORE + 1] * 16 + 13] + 1;
+
+    ireturn;
+endif;
